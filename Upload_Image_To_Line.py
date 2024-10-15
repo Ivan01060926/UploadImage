@@ -1,48 +1,54 @@
 import gradio as gr
-import os
-import requests
 from io import BytesIO
+import requests
 from PIL import Image
+import os
 
-def send_images_from_folder(folder_path):
+def send_to_line(filepaths):
     url = 'https://notify-api.line.me/api/notify'
-    line_token = 'wx3JjnPVDfLWX3y0m4ZVSzmGVAdZjXU9He8UItwOjhh'
+    line_token = 'Cf4wpfze99AsLIeVMHgWuZTYisjZu0OrGYcLgOOms7w'
     headers = {'Authorization': f'Bearer {line_token}'}
-    
-    folder_path = folder_path or 'D:\\測試圖2'
-    # 遍歷資料夾中的所有檔案
-    result = ""
-    for filename in os.listdir(folder_path):
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
-            file_path = os.path.join(folder_path, filename)
-            
-            # 將圖片讀入並轉為 BytesIO 格式
-            with Image.open(file_path) as img:
-                buffered = BytesIO()
-                img.save(buffered, format="PNG")
-                buffered.seek(0)
-            
-            # 發送圖片到 LINE Notify
-            data = {'message': f'發送圖片: {filename}'}
+
+    results = []  # 存放每張圖片的發送結果
+
+    for filepath in filepaths:
+        # 讀取圖片文件
+        with Image.open(filepath) as image:
+            buffered = BytesIO()
+            image.save(buffered, format="PNG")  # 儲存為 PNG 格式
+            buffered.seek(0)
+
+            # 建立表單資料和圖片文件
+            filename = os.path.basename(filepath)
+            data = {'message': os.path.splitext(filename)[0]}
             files = {'imageFile': buffered}
+
+            # 發送 POST 請求到 LINE Notify
             response = requests.post(url, headers=headers, data=data, files=files)
-            
-            # 回報傳送結果
-            if response.status_code == 200:
-                result += f'{filename} 已成功發送\n'
-            else:
-                result += f'{filename} 發送失敗: {response.text}\n'
-    
-    return result
+            results.append(f'{data["message"]}圖片已發送' if response.status_code == 200 else f'失敗: {response.text}')
+
+    # 返回發送結果並清空檔案選擇
+    return results, []
 
 # 建立 Gradio UI
 with gr.Blocks() as demo:
     with gr.Row():
-        folder_input = gr.Textbox(label="資料夾路徑", placeholder="D:\測試圖2")
-    send_button = gr.Button("發送資料夾中的圖片到 LINE")
-    output_text = gr.Textbox(label="結果")
+        image_input = gr.File(
+            label="上傳圖片", type="filepath", file_count="multiple"
+        )  # 允許多選
+    send_button = gr.Button("發送到 LINE")
+    output_text = gr.Textbox(label="結果")  # 用於顯示發送結果
 
-    # 點擊按鈕後執行函數
-    send_button.click(fn=send_images_from_folder, inputs=folder_input, outputs=output_text)
+    # 按鈕點擊事件：支援發送後重置檔案選擇
+    send_button.click(
+        fn=send_to_line, 
+        inputs=image_input, 
+        outputs=[output_text, image_input]  # 更新結果和清空檔案輸入
+    )
 
+if __name__ == "__main__":
+    # Render 要求應用監聽 0.0.0.0 並使用環境變數 PORT
+    port = int(os.environ.get('PORT', 7860))
+    demo.launch(server_name="0.0.0.0", server_port=port)
+    
 demo.launch()
